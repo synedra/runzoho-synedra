@@ -2,37 +2,39 @@ const https = require('https');
 
 const RUNALLOY_API_KEY = process.env.RUNALLOY_API_KEY;
 const RUNALLOY_API_URL = process.env.RUNALLOY_API_URL || 'https://production.runalloy.com';
-const RUNALLOY_USER_ID = process.env.RUNALLOY_USER_ID || 'default_user';
 
 // Cache for user credentials
 let credentialCache = {};
 
 /**
- * Get user's credential ID for a connector
- * @param {string} userId - The user ID
- * @param {string} connectorId - The connector ID
+ * Get user's credential ID for Monday.com
+ * @param {string} userId - The user ID (email)
  * @returns {Promise<string>} - The credential ID
  */
-async function getUserCredentialId(userId, connectorId) {
-  const cacheKey = `${userId}:${connectorId}`;
+async function getUserCredentialId(userId) {
+  const cacheKey = `${userId}:monday`;
   
   // Check cache first
   if (credentialCache[cacheKey]) {
+    console.log('Using cached credential for', userId);
     return credentialCache[cacheKey];
   }
 
   try {
-    const response = await runalloyApiRequest(`/users/${userId}/credentials?connectorId=${connectorId}`, 'GET');
-    const credentials = response.credentials || [];
-    const credential = credentials.find(c => c.connectorId === connectorId);
+    const response = await runalloyApiRequest(`/users/${userId}/credentials`, 'GET');
+    const credentials = response.credentials || response || [];
+    const mondayCredential = Array.isArray(credentials)
+      ? credentials.find(c => c.app === 'monday' || c.connectorId === 'monday')
+      : null;
     
-    if (credential && credential.credentialId) {
-      // Cache the credential ID
-      credentialCache[cacheKey] = credential.credentialId;
-      return credential.credentialId;
+    if (mondayCredential && (mondayCredential._id || mondayCredential.credentialId || mondayCredential.id)) {
+      const credId = mondayCredential._id || mondayCredential.credentialId || mondayCredential.id;
+      credentialCache[cacheKey] = credId;
+      console.log('Found credential for', userId, ':', credId);
+      return credId;
     }
     
-    throw new Error(`No credential found for user ${userId} and connector ${connectorId}`);
+    throw new Error(`No Monday.com credential found for user ${userId}`);
   } catch (error) {
     console.error('Error getting user credential:', error);
     throw error;
@@ -57,11 +59,11 @@ async function executeAction(connectorId, actionId, params = {}) {
     requestBody = {},
     additionalHeaders = {},
     pathParams = {},
-    userId = RUNALLOY_USER_ID
+    userId
   } = params;
 
-  // Get the user's credential ID
-  const credentialId = await getUserCredentialId(userId, connectorId);
+  // Get the user's credential ID dynamically
+  const credentialId = await getUserCredentialId(userId);
 
   const payload = {
     credentialId,
@@ -81,14 +83,14 @@ async function executeAction(connectorId, actionId, params = {}) {
       path: url.pathname,
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${RUNALLOY_API_KEY}`,
-        'x-api-version': '2025-06',
+        'API-KEY': RUNALLOY_API_KEY,
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(postData)
       }
     };
 
-    console.log(`RunAlloy: Executing ${connectorId}/${actionId}`);
+    console.log(`RunAlloy: Executing ${connectorId}/${actionId} for user:`, userId);
+    console.log('RunAlloy: Using credential:', credentialId);
     console.log('RunAlloy: Payload:', JSON.stringify(payload, null, 2));
 
     const req = https.request(options, (res) => {
@@ -139,7 +141,7 @@ async function executeAction(connectorId, actionId, params = {}) {
 }
 
 /**
- * Make a request to RunAlloy API (for management operations)
+ * Make a request to RunAlloy API
  */
 function runalloyApiRequest(path, method = 'GET', body = null) {
   return new Promise((resolve, reject) => {
@@ -150,8 +152,7 @@ function runalloyApiRequest(path, method = 'GET', body = null) {
       path: url.pathname + url.search,
       method: method,
       headers: {
-        'Authorization': `Bearer ${RUNALLOY_API_KEY}`,
-        'x-api-version': '2025-06',
+        'API-KEY': RUNALLOY_API_KEY,
         'Content-Type': 'application/json',
       },
     };
@@ -213,11 +214,10 @@ const monday = {
   /**
    * List all boards
    */
-  async listBoards(userId) {
+  async listBoards() {
     return executeAction('monday', 'listBoards', {
       queryParameters: {},
-      requestBody: {},
-      userId
+      requestBody: {}
     });
   },
 

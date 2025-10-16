@@ -1,0 +1,7 @@
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/auth/*"
+  to = "/index.html"
+  status = 200

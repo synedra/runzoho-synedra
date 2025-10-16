@@ -48,41 +48,44 @@ exports.handler = async (event, context) => {
 };
 
 async function createEmbeddedLink(userId, headers) {
-  console.log('Creating embedded link for user:', userId);
+  console.log('Creating credential for user:', userId);
 
   const payload = {
     userId: userId,
-    connectorId: 'monday',
-    redirectUrl: `${process.env.URL || 'http://localhost:8888'}`,
+    authenticationType: 'oauth2',
+    redirectUri: `${process.env.URL || 'https://runalloy.netlify.app'}`,
+    scope: 'boards:read boards:write workspaces:read'
   };
 
   try {
-    const response = await runalloyApiRequest('/embedded/links', 'POST', payload);
+    const response = await runalloyApiRequest('/connectors/monday/credentials', 'POST', payload);
     
-    console.log('Embedded link created:', response);
+    console.log('Credential creation response:', response);
 
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
-        linkUrl: response.linkUrl,
+        linkUrl: response.oauthUrl,
         userId: userId
       }),
     };
   } catch (error) {
-    console.error('Error creating embedded link:', error);
+    console.error('Error creating credential:', error);
     throw error;
   }
 }
 
 async function getUserCredential(userId, headers) {
-  console.log('Getting credential for user:', userId);
+  console.log('Getting credentials for user:', userId);
 
   try {
-    const response = await runalloyApiRequest(`/users/${userId}/credentials?connectorId=monday`, 'GET');
+    const response = await runalloyApiRequest(`/users/${userId}/credentials`, 'GET');
     
-    const credentials = response.credentials || [];
-    const mondayCredential = credentials.find(c => c.connectorId === 'monday');
+    const credentials = response.credentials || response || [];
+    const mondayCredential = Array.isArray(credentials)
+      ? credentials.find(c => c.app === 'monday' || c.connectorId === 'monday')
+      : null;
 
     if (mondayCredential) {
       return {
@@ -90,8 +93,8 @@ async function getUserCredential(userId, headers) {
         headers,
         body: JSON.stringify({
           hasCredential: true,
-          credentialId: mondayCredential.credentialId,
-          status: mondayCredential.status
+          credentialId: mondayCredential._id || mondayCredential.credentialId || mondayCredential.id,
+          status: mondayCredential.status || 'active'
         }),
       };
     } else {
@@ -105,40 +108,19 @@ async function getUserCredential(userId, headers) {
     }
   } catch (error) {
     console.error('Error getting user credential:', error);
-    throw error;
-  }
-}
-
-async function checkCredentialStatus(userId, headers) {
-  console.log('Checking credential status for user:', userId);
-
-  try {
-    const response = await runalloyApiRequest(`/users/${userId}/credentials?connectorId=monday`, 'GET');
-    
-    const credentials = response.credentials || [];
-    const mondayCredential = credentials.find(c => c.connectorId === 'monday');
-
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        hasCredential: !!mondayCredential,
-        credentialId: mondayCredential?.credentialId,
-        status: mondayCredential?.status || 'not_found'
-      }),
-    };
-  } catch (error) {
-    console.error('Error checking credential status:', error);
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
         hasCredential: false,
-        status: 'error',
         error: error.message
       }),
     };
   }
+}
+
+async function checkCredentialStatus(userId, headers) {
+  return getUserCredential(userId, headers);
 }
 
 function runalloyApiRequest(path, method = 'GET', body = null) {
@@ -150,8 +132,7 @@ function runalloyApiRequest(path, method = 'GET', body = null) {
       path: url.pathname + url.search,
       method: method,
       headers: {
-        'Authorization': `Bearer ${RUNALLOY_API_KEY}`,
-        'x-api-version': '2025-06',
+        'API-KEY': RUNALLOY_API_KEY,
         'Content-Type': 'application/json',
       },
     };
@@ -162,6 +143,7 @@ function runalloyApiRequest(path, method = 'GET', body = null) {
     }
 
     console.log(`RunAlloy API: ${method} ${path}`);
+    console.log('Using API key:', RUNALLOY_API_KEY ? `${RUNALLOY_API_KEY.substring(0, 8)}...` : 'MISSING');
 
     const req = https.request(options, (res) => {
       let data = '';

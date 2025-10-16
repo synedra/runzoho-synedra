@@ -13,15 +13,11 @@ function App() {
   const [needsAuth, setNeedsAuth] = useState(false);
 
   useEffect(() => {
-    // Check if email is already stored
     const storedEmail = localStorage.getItem('user_email');
-    console.log('Stored email on mount:', storedEmail);
     if (storedEmail) {
       setUserEmail(storedEmail);
       setEmailSubmitted(true);
       checkCredentialsAndAuth(storedEmail);
-    } else {
-      console.log('No stored email, showing email form');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -33,12 +29,9 @@ function App() {
       return;
     }
     
-    // Store email
     localStorage.setItem('user_email', userEmail);
     setEmailSubmitted(true);
     setError(null);
-    
-    // Check credentials and auth
     await checkCredentialsAndAuth(userEmail);
   };
 
@@ -47,33 +40,41 @@ function App() {
     setError(null);
     
     try {
-      // Check if user has credentials
       const response = await fetch(`/.netlify/functions/runalloy-auth?action=check-status&userId=${encodeURIComponent(email)}`);
       const data = await response.json();
       
-      console.log('Credential status for', email, ':', data);
+      console.log('Credential status:', data);
       
       if (data.hasCredential) {
-        // User has credentials, fetch boards
         setNeedsAuth(false);
         await fetchBoards(email);
       } else {
-        // User needs to authenticate - create link and redirect automatically
-        console.log('No credential found, creating auth link...');
+        console.log('No credential, creating OAuth URL...');
         const linkResponse = await fetch(`/.netlify/functions/runalloy-auth?action=create-link&userId=${encodeURIComponent(email)}`);
+        
+        if (!linkResponse.ok) {
+          const errorText = await linkResponse.text();
+          console.error('Link creation failed:', errorText);
+          throw new Error('Failed to create authentication link');
+        }
+        
         const linkData = await linkResponse.json();
+        console.log('Link response:', linkData);
         
-        console.log('Auth link created:', linkData.linkUrl);
+        if (!linkData.linkUrl) {
+          console.error('No linkUrl in response:', linkData);
+          throw new Error('Invalid response from authentication service');
+        }
         
-        // Automatically redirect to auth
+        console.log('Redirecting to OAuth URL:', linkData.linkUrl);
         setNeedsAuth(true);
         window.location.href = linkData.linkUrl;
       }
     } catch (err) {
-      console.error('Error checking credentials:', err);
-      setError('Failed to check authentication status: ' + err.message);
-    } finally {
+      console.error('Error:', err);
+      setError('Failed to authenticate: ' + err.message);
       setCheckingCredential(false);
+      setNeedsAuth(false);
     }
   };
 
@@ -81,8 +82,7 @@ function App() {
     setLoadingBoards(true);
     setError(null);
     try {
-      const userId = email || userEmail;
-      const response = await fetch(`/.netlify/functions/monday-boards?userId=${encodeURIComponent(userId)}`, {
+      const response = await fetch(`/.netlify/functions/monday-boards?userId=${encodeURIComponent(email)}`, {
         method: 'GET',
       });
 
@@ -92,8 +92,6 @@ function App() {
       }
 
       const data = await response.json();
-      console.log('Fetched boards:', data.data);
-      // Transform the data to include items from items_page
       const transformedBoards = (data.data || []).map(board => ({
         id: board.id,
         name: board.name,
@@ -101,16 +99,17 @@ function App() {
         items: board.items_page?.items || []
       }));
       setBoards(transformedBoards);
+      setCheckingCredential(false);
     } catch (error) {
       console.error('Error fetching boards:', error);
       setError(error.message);
+      setCheckingCredential(false);
     } finally {
       setLoadingBoards(false);
     }
   };
 
   const handleBoardChange = () => {
-    // Refresh boards after any board operation
     fetchBoards(userEmail);
   };
 
@@ -126,11 +125,6 @@ function App() {
     <div className="App">
       <header className="App-header">
         <h1>Monday.com Todo List (via RunAlloy)</h1>
-        
-        {/* Debug info */}
-        <div style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>
-          Debug: emailSubmitted={String(emailSubmitted)}, checkingCredential={String(checkingCredential)}, needsAuth={String(needsAuth)}
-        </div>
 
         {!emailSubmitted && (
           <div style={{
@@ -144,7 +138,7 @@ function App() {
           }}>
             <h3 style={{ marginTop: 0, color: '#333' }}>Welcome!</h3>
             <p style={{ color: '#666', marginBottom: '20px' }}>
-              Enter your email to get started with Monday.com
+              Enter your email to get started
             </p>
             <form onSubmit={handleEmailSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <input
@@ -153,44 +147,50 @@ function App() {
                 onChange={(e) => setUserEmail(e.target.value)}
                 placeholder="your.email@example.com"
                 required
+                autoFocus
                 style={{
                   padding: '12px',
                   fontSize: '16px',
                   borderRadius: '4px',
-                  border: '1px solid #ced4da',
-                  outline: 'none'
+                  border: '1px solid #ced4da'
                 }}
               />
-              <button
-                type="submit"
-                style={{
-                  padding: '12px 24px',
-                  fontSize: '16px',
-                  backgroundColor: '#007bff',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontWeight: 'bold'
-                }}
-              >
+              <button type="submit" style={{
+                padding: '12px 24px',
+                fontSize: '16px',
+                backgroundColor: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}>
                 Continue
               </button>
             </form>
+            <button
+              onClick={() => {
+                localStorage.removeItem('user_email');
+                window.location.reload();
+              }}
+              style={{
+                marginTop: '10px',
+                padding: '6px 12px',
+                fontSize: '12px',
+                backgroundColor: 'transparent',
+                color: '#666',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              Reset
+            </button>
           </div>
         )}
 
-        {checkingCredential && (
-          <div style={{ padding: '20px' }}>
-            <p>Setting up your account...</p>
-          </div>
-        )}
-
-        {needsAuth && (
-          <div style={{ padding: '20px' }}>
-            <p>Redirecting to Monday.com authentication...</p>
-          </div>
-        )}
+        {checkingCredential && <div style={{ padding: '20px' }}><p>Setting up your account...</p></div>}
+        {needsAuth && <div style={{ padding: '20px' }}><p>Redirecting to Monday.com...</p></div>}
 
         {error && (
           <div style={{
@@ -210,18 +210,15 @@ function App() {
           <>
             <div style={{ marginBottom: '20px', textAlign: 'right', maxWidth: '1200px', width: '100%' }}>
               <span style={{ marginRight: '15px', color: '#666' }}>{userEmail}</span>
-              <button
-                onClick={handleLogout}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#6c757d',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px'
-                }}
-              >
+              <button onClick={handleLogout} style={{
+                padding: '8px 16px',
+                backgroundColor: '#6c757d',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}>
                 Logout
               </button>
             </div>

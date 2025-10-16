@@ -19,7 +19,6 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    // Get userId from query parameters (user's email)
     const userId = event.queryStringParameters?.userId;
     
     switch (event.httpMethod) {
