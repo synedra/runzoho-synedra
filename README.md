@@ -1,3 +1,18 @@
+# Easy Monday-Backed TaskList
+
+## This application:
+* Uses OAuth2.0 to connect to a Monday.com account
+* Displays user information and tasklist boards
+* Includes functionality to create new boards or update existing ones
+* Uses React for the framework
+* Deploys to [Netlify](https://runalloy.netlify.app) for public access
+
+## This sample application requires the following:
+* [Node.js](https://nodejs.org/en/download) (tested on 24.5)
+* [HTTPie](https://httpie.io/cli) (optional) - Easier to use but curl examples are given as well
+* [Netlify](https://www.netlify.com/) account
+* [Monday.com](https://monday.com) account
+
 # Getting Started with Create React App
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
