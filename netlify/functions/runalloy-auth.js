@@ -50,17 +50,23 @@ exports.handler = async (event, context) => {
 async function createEmbeddedLink(userId, headers) {
   console.log('Creating credential for user:', userId);
 
+  // Match the exact format from the successful curl command
   const payload = {
     userId: userId,
     authenticationType: 'oauth2',
-    redirectUri: `${process.env.URL || 'https://runalloy.netlify.app'}`,
-    scope: 'boards:read boards:write workspaces:read'
+    redirectUri: process.env.URL || 'https://runalloy.netlify.app'
   };
 
   try {
+    console.log('Sending payload:', JSON.stringify(payload, null, 2));
     const response = await runalloyApiRequest('/connectors/monday/credentials', 'POST', payload);
     
-    console.log('Credential creation response:', response);
+    console.log('Credential creation response:', JSON.stringify(response, null, 2));
+
+    if (!response.oauthUrl) {
+      console.error('No oauthUrl in response:', response);
+      throw new Error('Invalid response from RunAlloy - missing oauthUrl');
+    }
 
     return {
       statusCode: 200,
@@ -72,6 +78,7 @@ async function createEmbeddedLink(userId, headers) {
     };
   } catch (error) {
     console.error('Error creating credential:', error);
+    console.error('Error details:', JSON.stringify(error, null, 2));
     throw error;
   }
 }
@@ -125,14 +132,18 @@ async function checkCredentialStatus(userId, headers) {
 
 function runalloyApiRequest(path, method = 'GET', body = null) {
   return new Promise((resolve, reject) => {
-    const url = new URL(`${RUNALLOY_API_URL}${path}`);
+    const fullUrl = `${RUNALLOY_API_URL}${path}`;
+    console.log('Full URL:', fullUrl);
+    const url = new URL(fullUrl);
     
     const options = {
       hostname: url.hostname,
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
       path: url.pathname + url.search,
       method: method,
       headers: {
         'API-KEY': RUNALLOY_API_KEY,
+        'x-api-version': '2025-06',
         'Content-Type': 'application/json',
       },
     };
@@ -142,7 +153,8 @@ function runalloyApiRequest(path, method = 'GET', body = null) {
       options.headers['Content-Length'] = Buffer.byteLength(postData);
     }
 
-    console.log(`RunAlloy API: ${method} ${path}`);
+    console.log(`RunAlloy API: ${method} ${fullUrl}`);
+    console.log('Options:', JSON.stringify({ hostname: options.hostname, port: options.port, path: options.path, method: options.method }, null, 2));
     console.log('Using API key:', RUNALLOY_API_KEY ? `${RUNALLOY_API_KEY.substring(0, 8)}...` : 'MISSING');
 
     const req = https.request(options, (res) => {

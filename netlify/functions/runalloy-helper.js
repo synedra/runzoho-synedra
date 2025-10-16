@@ -84,6 +84,7 @@ async function executeAction(connectorId, actionId, params = {}) {
       method: 'POST',
       headers: {
         'API-KEY': RUNALLOY_API_KEY,
+        'x-api-version': '2025-06',
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(postData)
       }
@@ -153,6 +154,7 @@ function runalloyApiRequest(path, method = 'GET', body = null) {
       method: method,
       headers: {
         'API-KEY': RUNALLOY_API_KEY,
+        'x-api-version': '2025-06',
         'Content-Type': 'application/json',
       },
     };
