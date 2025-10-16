@@ -18,15 +18,18 @@ exports.handler = async (event, context) => {
 
   try {
     const { action, userId } = event.queryStringParameters || {};
-    const effectiveUserId = userId || RUNALLOY_USER_ID;
+    
+    // Map email to RunAlloy userId
+    const runalloyUserId = getUserIdFromEmail(userId) || RUNALLOY_USER_ID;
+    console.log('Mapping email', userId, 'to RunAlloy userId:', runalloyUserId);
 
     switch (action) {
       case 'create-link':
-        return await createEmbeddedLink(effectiveUserId, headers);
+        return await createEmbeddedLink(runalloyUserId, headers);
       case 'get-credential':
-        return await getUserCredential(effectiveUserId, headers);
+        return await getUserCredential(runalloyUserId, headers);
       case 'check-status':
-        return await checkCredentialStatus(effectiveUserId, headers);
+        return await checkCredentialStatus(runalloyUserId, headers);
       default:
         return {
           statusCode: 400,
@@ -47,10 +50,27 @@ exports.handler = async (event, context) => {
   }
 };
 
+/**
+ * Map email address to RunAlloy userId
+ * Checks environment variables for RUNALLOY_USER_{email}
+ */
+function getUserIdFromEmail(email) {
+  if (!email) return null;
+  
+  // Use base64 encoding to avoid special characters in env var names
+  const base64Email = Buffer.from(email).toString('base64');
+  const envVarName = `RUNALLOY_USER_${base64Email}`;
+  
+  const userId = process.env[envVarName];
+  console.log(`Looking for env var: ${envVarName} (${email}), found:`, userId ? userId : 'no');
+  
+  return userId;
+}
+
 async function createEmbeddedLink(userId, headers) {
   console.log('Creating credential for user:', userId);
 
-  // Match the exact format from the successful curl command
+  // Don't send scopes in the payload - RunAlloy might not support it
   const payload = {
     userId: userId,
     authenticationType: 'oauth2',
@@ -68,11 +88,20 @@ async function createEmbeddedLink(userId, headers) {
       throw new Error('Invalid response from RunAlloy - missing oauthUrl');
     }
 
+    // Append scopes to the OAuth URL manually
+    // Using only the core scopes that Monday.com definitely supports
+    const oauthUrl = new URL(response.oauthUrl);
+    oauthUrl.searchParams.set('scope', 'boards:read boards:write me:read');
+    const finalUrl = oauthUrl.toString();
+    
+    console.log('Original OAuth URL:', response.oauthUrl);
+    console.log('Final OAuth URL with scopes:', finalUrl);
+
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
-        linkUrl: response.oauthUrl,
+        linkUrl: finalUrl,
         userId: userId
       }),
     };
@@ -142,6 +171,7 @@ function runalloyApiRequest(path, method = 'GET', body = null) {
       path: url.pathname + url.search,
       method: method,
       headers: {
+        'Authorization': `Bearer ${RUNALLOY_API_KEY}`,
         'API-KEY': RUNALLOY_API_KEY,
         'x-api-version': '2025-06',
         'Content-Type': 'application/json',

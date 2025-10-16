@@ -7,6 +7,22 @@ const RUNALLOY_API_URL = process.env.RUNALLOY_API_URL || 'https://production.run
 let credentialCache = {};
 
 /**
+ * Map email address to RunAlloy userId
+ */
+function getUserIdFromEmail(email) {
+  if (!email) return null;
+  
+  // Use base64 encoding to avoid special characters in env var names
+  const base64Email = Buffer.from(email).toString('base64');
+  const envVarName = `RUNALLOY_USER_${base64Email}`;
+  
+  const userId = process.env[envVarName];
+  console.log(`Mapping email ${email} via ${envVarName}:`, userId ? userId : 'not found');
+  
+  return userId;
+}
+
+/**
  * Get user's credential ID for Monday.com
  * @param {string} userId - The user ID (email)
  * @returns {Promise<string>} - The credential ID
@@ -59,11 +75,15 @@ async function executeAction(connectorId, actionId, params = {}) {
     requestBody = {},
     additionalHeaders = {},
     pathParams = {},
-    userId
+    userId: emailOrUserId
   } = params;
 
+  // Map email to RunAlloy userId if needed
+  const runalloyUserId = getUserIdFromEmail(emailOrUserId) || emailOrUserId;
+  console.log('Execute action for email/userId:', emailOrUserId, '→ RunAlloy userId:', runalloyUserId);
+
   // Get the user's credential ID dynamically
-  const credentialId = await getUserCredentialId(userId);
+  const credentialId = await getUserCredentialId(runalloyUserId);
 
   const payload = {
     credentialId,
@@ -83,6 +103,7 @@ async function executeAction(connectorId, actionId, params = {}) {
       path: url.pathname,
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${RUNALLOY_API_KEY}`,
         'API-KEY': RUNALLOY_API_KEY,
         'x-api-version': '2025-06',
         'Content-Type': 'application/json',
@@ -90,7 +111,7 @@ async function executeAction(connectorId, actionId, params = {}) {
       }
     };
 
-    console.log(`RunAlloy: Executing ${connectorId}/${actionId} for user:`, userId);
+    console.log(`RunAlloy: Executing ${connectorId}/${actionId} for user:`, runalloyUserId);
     console.log('RunAlloy: Using credential:', credentialId);
     console.log('RunAlloy: Payload:', JSON.stringify(payload, null, 2));
 
@@ -153,6 +174,7 @@ function runalloyApiRequest(path, method = 'GET', body = null) {
       path: url.pathname + url.search,
       method: method,
       headers: {
+        'Authorization': `Bearer ${RUNALLOY_API_KEY}`,
         'API-KEY': RUNALLOY_API_KEY,
         'x-api-version': '2025-06',
         'Content-Type': 'application/json',
@@ -216,10 +238,11 @@ const monday = {
   /**
    * List all boards
    */
-  async listBoards() {
+  async listBoards(userId) {
     return executeAction('monday', 'listBoards', {
       queryParameters: {},
-      requestBody: {}
+      requestBody: {},
+      userId
     });
   },
 
