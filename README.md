@@ -1,104 +1,312 @@
-# Zoho Tasks Todo List App
+	# Zoho CRM Tasks Integration Guide
 
-A React application that provides a todo list interface backed by Zoho Tasks, integrated through RunAlloy.
+	This application uses Zoho CRM Tasks as the backend for a simplified todo list functionality, integrated through RunAlloy.
 
-## Features
+	## Overview
 
-- **Task List Management**: Create, update, and delete task lists (equivalent to boards)
-- **Task Management**: Add, edit, delete, and mark tasks as complete/incomplete
-- **OAuth Authentication**: Secure authentication via RunAlloy's Zoho Tasks integration
-- **Real-time Updates**: Changes sync immediately with Zoho Tasks
-- **Responsive Design**: Works on desktop and mobile devices
+	The application routes all requests through RunAlloy's connector system to interact with Zoho CRM Tasks module. This provides several benefits:
 
-## Architecture
+	- **Centralized Authentication**: RunAlloy manages OAuth credentials and tokens for Zoho
+	- **Connectivity API**: Consistent interface across different connectors
+	- **Better Error Handling**: Standardized error responses
+	- **Rate Limiting**: Built-in rate limit management
+	- **Monitoring**: Track API usage through RunAlloy dashboard
 
-This app uses:
-- **Frontend**: React with hooks for state management
-- **Backend**: Netlify Functions for serverless API calls
-- **Integration**: RunAlloy as middleware for Zoho Tasks API
-- **Authentication**: OAuth 2.0 via RunAlloy
+	## Architecture
 
-## Setup
+	```
+	Frontend (React) - Single Task List
+	    ↓
+	Netlify Functions (zoho-tasks.cjs)
+	    ↓
+	RunAlloy Helper (runalloy-helper.cjs)
+	    ↓
+	RunAlloy API
+	    ↓
+	Zoho CRM Tasks Module
+	```
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd runalloy-zoho-tasks
-   ```
+	## Setup
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+	### 1. Environment Variables
 
-3. **Configure environment variables**
-   Create a `.env` file with:
-   ```bash
-   RUNALLOY_API_KEY=your_runalloy_api_key
-   RUNALLOY_API_URL=https://production.runalloy.com
-   ```
+	#### a. Get Your Credentials
 
-4. **Deploy to Netlify** (recommended)
-   ```bash
-   npm run build
-   # Deploy the build folder to Netlify
-   ```
+	1. **RunAlloy API Key**: Get from RunAlloy dashboard → Settings → API Keys
+	2. **Zoho CRM Connector**: Configure the Zoho CRM connector in RunAlloy dashboard
+	3. **Zoho OAuth Credentials**: These are used by RunAlloy internally for the Zoho CRM connector
 
-## Usage
+	#### b. Set Your Environment Variables
+	Add these variables to your `.env` file:
 
-1. Enter your email address to start
-2. Authenticate with Zoho through RunAlloy's OAuth flow
-3. Create task lists and add tasks
-4. Mark tasks as complete by checking the checkbox
-5. Edit or delete tasks and task lists as needed
+	```bash
+	# RunAlloy API Configuration
+	RUNALLOY_API_KEY=your_api_key_here
+	RUNALLOY_API_URL=https://production.runalloy.com
 
-## API Integration
+	# Zoho OAuth Configuration (for reference)
+	ZOHO_CLIENT_ID=your_zoho_client_id
+	ZOHO_CLIENT_SECRET=your_zoho_client_secret
+	```
 
-The app integrates with Zoho Tasks through RunAlloy:
+	### 2. Setup httpie
 
-- **Task Lists**: Mapped to Zoho Task Lists
-- **Tasks**: Mapped to Zoho Tasks
-- **Status**: "Working on it" (open) ↔ "Done" (completed)
+	Curl is kind of a pain for making API calls, as you need to set the headers separately each time.  We'll use 'httpie', a command line option that allows you to set up your headers for every call.
 
-## Development
+	1. **Install [Httpie](https://httpie.io/cli)**
+	2. **Setup httpie session**
 
-### Available Scripts
+	Create your config file.  This instructs httpie to use the correct header file for each command.
 
-- `npm start` - Run development server
-- `npm test` - Run tests
-- `npm run build` - Build for production
-- `npm run eject` - Eject from Create React App
+	```json
+	{
+		"default_options": [
+		    "--session-read-only=~/.config/httpie/default_headers_session.json"
+		]
+	    }
+	```
 
-### Project Structure
+	Save this as `~/.config/httpie/config.json` (create the directory if it doesn't exist).
 
-```
-src/
-├── App.js                    # Main application component
-├── BoardComponent.js         # Task list display component
-├── BoardManagement.js        # Task list management UI
-├── TodoList.js              # Task management UI
-└── ...
+	### 3. **Create session file**
+	Add the session header file to complete this setup:
 
-netlify/functions/
-├── zoho-auth.js             # Authentication via RunAlloy
-├── zoho-tasks.js            # Task and tasklist operations (combined)
-└── runalloy-helper.js       # RunAlloy integration utilities
-```
+	```json
+	{
+	    "__meta__": {
+		"about": "HTTPie session file",
+		"help": "https://httpie.io/docs#sessions",
+		"httpie": "3.2.4"
+	    },
+	    "auth": {
+		"password": null,
+		"type": null,
+		"username": null
+	    },
+	    "cookies": [],
+	    "headers": [
+		{
+		    "name": "x-api-version",
+		    "value": "2025-06"
+		},
+		{
+		    "name": "Authorization",
+		    "value": "Bearer j3oDqPBhf-ZuTGHeDf2Ru"
+		},
+		{
+		    "name": "x-alloy-userid",
+		    "value": "68f1e561ba205b5a3bf234c8"
+		}
+	    ]
+	}
+	```
 
-## Documentation
+	Save this as `~/.config/httpie/default_headers_session.json` 
 
-- [RunAlloy Integration Guide](README-RunAlloy.md)
-- [Zoho Tasks Integration Guide](README-Zoho.md)
-- [OAuth Setup Guide](README-OAuth.md)
+	### 4. Test it out
 
-## Contributing
+	Run the following command to check your httpie setup:
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+	``` bash
+	https https://production.runalloy.com/connectors
+	```
 
-## License
+	You can see all the connectors here.  We'll be using the 'zohoCRM' connector for the todo list.
 
-This project is licensed under the MIT License.
+	For production, you will want to create this workflow dynamically, but for this example we will create the user and credential using the CLI, then plug them into the code.
+
+	## Create a user and credential
+
+	### 1. Create the user
+	Run the following command to create a new user.
+	``` bash
+	https https://production.runalloy.com/users \
+	username="<your email address>" \
+	fullName="<Full name>"
+	```
+
+	This will return a string which you will use for your userId (like '68f1e561ba205b5a3bf234c8').  If you lose this string, you can find the user with the following command:
+
+	```
+	https https://production.runalloy.com/users
+	```
+
+	Pick the user matching the email you used.  In the default_headers_session.json file (in ~/.config/httpie) change the x-alloy-userid to the user you just created.
+
+	Update the Authorization entry so that it is "Bearer <RUNALLOY_API_KEY>"
+
+	### 2. Setup your netlify environment
+
+	To use this repository, you will need to get netlify set up.
+
+	#### a. 
+
+	Click the following button to deploy the codebase to Netlify.  You need to have a Netlify account for this to work.
+
+	[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/synedra/runzoho)
+
+
+	### 2. Create the credential
+
+
+
+	``` bash
+	https https://production.runalloy.com/connectors/zohoCRM/credentials \ userId=68f1e561ba205b5a3bf234c8 \
+	authenticationType=oauth2 \
+	redirectUri=https://runzoho.netlify.app/.netlify/functions/zoho-auth \
+	data:='{"region":"com"}'
+	```
+
+	This will give you a 
+
+	## API Operations
+
+	### Tasks
+
+	#### List Tasks
+	```javascript
+	const response = await fetch('/.netlify/functions/zoho-tasks?userId=user123', {
+	  method: 'GET'
+	});
+	```
+
+	#### Create Task
+	```javascript
+	const response = await fetch('/.netlify/functions/zoho-tasks', {
+	  method: 'POST',
+	  headers: { 'Content-Type': 'application/json' },
+	  body: JSON.stringify({ 
+	    name: 'New Task',
+	    userId: 'user123'
+	  })
+	});
+	```
+
+	#### Update Task
+	```javascript
+	const response = await fetch('/.netlify/functions/zoho-tasks', {
+	  method: 'PUT',
+	  headers: { 'Content-Type': 'application/json' },
+	  body: JSON.stringify({
+	    id: '67890',
+	    name: 'Updated Task',
+	    userId: 'user123',
+	    columnValues: { status: 'completed' }
+	  })
+	});
+	```
+
+	#### Delete Task
+	```javascript
+	const response = await fetch('/.netlify/functions/zoho-tasks?taskId=67890&userId=user123', {
+	  method: 'DELETE'
+	});
+	```
+
+	## File Structure
+
+	```
+	netlify/functions/
+	├── helpers/
+	│   └── runalloy-helper.cjs  # Core RunAlloy integration with Zoho CRM
+	├── zoho-auth.cjs            # Zoho authentication via RunAlloy
+	└── zoho-tasks.cjs           # Task operations (CRUD)
+
+	src/
+	├── App.js                   # Main app with simplified single list UI
+	├── BoardComponent.js        # Simplified task display component
+	├── TodoList.js              # Task CRUD UI with enhanced display
+	└── AppContext.js            # Global state management
+	```
+
+	## RunAlloy Helper
+
+	The `runalloy-helper.cjs` module provides:
+
+	### Core Function
+	```javascript
+	executeAction(connectorId, actionId, params)
+	```
+
+	### Zoho CRM Tasks Helpers
+	```javascript
+	zoho.listTasks(userId)        # List all tasks for user
+	zoho.createTask(taskData)     # Create new task with Subject, Status, Priority
+	zoho.updateTask(taskId, data) # Update task by ID
+	zoho.deleteTask(taskId)       # Delete task by ID
+	```
+
+	### Task Schema
+	Tasks use Zoho CRM field mappings:
+	- `Subject`: Task name/title
+	- `Status`: Not Started, In Progress, Completed
+	- `Priority`: High, Normal, Low
+	- `Description`: Task description
+	- `Due_Date`: Due date for task
+	- `Owner`: Task assignee
+
+	## Application Features
+
+	The application provides a simplified task management interface with:
+
+	1. ✅ Single task list view (no board selection complexity)
+	2. ✅ Enhanced task display with priority badges and due dates
+	3. ✅ Task completion toggle with checkbox
+	4. ✅ Rich task information including owner and descriptions
+	5. ✅ Full CRUD operations (Create, Read, Update, Delete)
+	6. ✅ Zoho CRM field mapping and status handling
+	7. ✅ Responsive UI with proper loading states and error handling
+
+	## Error Handling
+
+	RunAlloy errors are standardized:
+
+	```javascript
+	{
+	  statusCode: 400,
+	  error: "Error message",
+	  details: { /* additional info */ }
+	}
+	```
+
+	## Debugging
+
+	Enable detailed logging by checking:
+
+	1. **Netlify Function Logs**: See RunAlloy API requests/responses
+	2. **Browser Console**: See frontend errors
+	3. **RunAlloy Dashboard**: Monitor API usage and errors
+
+	## Troubleshooting
+
+	### "Authorization token required"
+	- Check `RUNALLOY_API_KEY` is set in `.env`
+	- Verify API key is valid in RunAlloy dashboard
+
+	### "Credential ID required"
+	- Ensure Zoho connector is configured in RunAlloy dashboard
+	- Verify credential exists and is active
+
+	### "Failed to fetch tasks"
+	- Check Zoho CRM connector is configured in RunAlloy dashboard
+	- Verify credential has necessary permissions for Tasks module
+	- Check RunAlloy dashboard for API errors
+	- Ensure Zoho CRM has Tasks module enabled
+
+	## Best Practices
+
+	1. **Error Handling**: Always handle both network and API errors
+	2. **Loading States**: Show loading indicators during API calls
+	3. **Retry Logic**: Implement retry for transient failures
+	4. **Caching**: Consider caching task data for better performance
+	5. **Rate Limits**: RunAlloy handles this, but be mindful of excessive calls
+
+	## Support
+
+	- **RunAlloy Docs**: https://docs.runalloy.com
+	- **Zoho CRM API**: https://www.zoho.com/crm/developer/docs/api/
+	- **Zoho CRM Tasks Module**: https://www.zoho.com/crm/developer/docs/api/modules-fields-api/tasks.html
+	- **Issues**: Check Netlify function logs and RunAlloy dashboard
+
+	## License
+
