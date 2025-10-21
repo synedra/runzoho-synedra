@@ -2,6 +2,8 @@
 
 *A step-by-step tutorial on creating a streamlined task management application that connects Zoho CRM Tasks to a React frontend through RunAlloy's unified API platform.*
 
+<img width="1020" height="765" alt="image" src="https://github.com/user-attachments/assets/a2810272-f1d8-4ff1-b0b0-469bc4b35ca2" />
+
 ## The Challenge
 
 Building integrations with third-party APIs like Zoho CRM can be complex. You need to handle OAuth flows, manage API credentials, deal with rate limiting, and navigate different API schemas. What if there was a way to simplify all of this while building a clean, modern task management interface?
