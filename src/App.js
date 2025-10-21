@@ -67,12 +67,9 @@ function App() {
     setCheckingCredential(true);
     setError(null);
 
-    console.log('Checking credentials for:', email);
-      setUserEmail(email)
-      setCredentialId("68f675dac4fc59f453aa25fb");
-
-      setNeedsAuth(false);
-      await fetchTasks(email);
+    setUserEmail(email);
+    setNeedsAuth(false);
+    await fetchTasks(email);
   };
 
   const fetchTasks = async (email) => {

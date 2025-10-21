@@ -1,6 +1,6 @@
 # Zoho CRM Tasks Integration Guide
 
-This application uses Zoho CRM Tasks as the backend for a simplified todo list functionality, integrated through RunAlloy.
+This application uses Zoho CRM Tasks as the backend for a simplified todo list functionality, integrated through RunAlloy.  You can find a more detailed description in this [blog post].
 
 ## Overview
 
@@ -26,6 +26,13 @@ RunAlloy API
 Zoho CRM Tasks Module
 ```
 
+## Prerequisites
+- Httpie (instructions below)
+- [Node.js](https://nodejs.org) (tested with 24.5)
+- [Netlify](https://netlify.com) account
+- [Zoho](https://zoho.com) account
+- [RunAlloy](https://runalloy.com) API token
+
 ## Setup
 
 ### 1. Environment Variables
@@ -44,7 +51,7 @@ Add these variables to your `.env` file:
 RUNALLOY_API_KEY=your_api_key_here
 RUNALLOY_API_URL=https://production.runalloy.com
 
-# Zoho OAuth Configuration (for reference)
+# Zoho OAuth Configuration 
 ZOHO_CLIENT_ID=your_zoho_client_id
 ZOHO_CLIENT_SECRET=your_zoho_client_secret
 ```
@@ -127,7 +134,7 @@ fullName="<Full name>"
 
 This will return a string which you will use for your userId (like '68f1e561ba205b5a3bf234c8').  If you lose this string, you can find the user with the following command:
 
-```
+``` bash
 https https://production.runalloy.com/users
 ```
 
@@ -139,16 +146,29 @@ Update the Authorization entry so that it is "Bearer <RUNALLOY_API_KEY>"
 
 To use this repository, you will need to get netlify set up.
 
-#### a. 
+#### a. Setup the repository and application
 
 Click the following button to deploy the codebase to Netlify.  You need to have a Netlify account for this to work.
 
 [![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/synedra/runzoho)
 
+Click "Connect with Github" to create a github repository and connect it to the netlify application.  Choose a unique name for your netlify application (like zoho-<github-username>)
+
+Clone your newly created repository to your system and install the requirements.
+
+```
+git clone https://github.com/<github-username>/zoho-<github-username>
+cd zoho-<github-username>
+npm install
+```
+
+#### b. Check the deploy
+
+Browse to `https://<yourappname>.netlify.app` and you should be given the chance to login with an email address.  Wait for a moment as we need to create the credential first.
 
 ### 2. Create the credential
 
-
+In your terminal window do the following:
 
 ``` bash
 https https://production.runalloy.com/connectors/zohoCRM/credentials \ userId=68f1e561ba205b5a3bf234c8 \
@@ -157,156 +177,46 @@ redirectUri=https://runzoho.netlify.app/.netlify/functions/zoho-auth \
 data:='{"region":"com"}'
 ```
 
-This will give you a 
+This will give you an oauth URL.  Copy and paste that URL into your browser window and it will let you login with Zoho - if you don't have a Zoho account already, create one now.
 
-## API Operations
+After you've done the OAuth login, your credential should be available.  Check the credentials to find the one you created.
 
-### Tasks
-
-#### List Tasks
-```javascript
-const response = await fetch('/.netlify/functions/zoho-tasks?userId=user123', {
-  method: 'GET'
-});
+``` bash
+https://production.runalloy.com/connectors/zohoCRM/credentials
 ```
 
-#### Create Task
-```javascript
-const response = await fetch('/.netlify/functions/zoho-tasks', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ 
-    name: 'New Task',
-    userId: 'user123'
-  })
-});
+It will look like this:
+
+``` json
+        {
+            "createdAt": "2025-10-20T17:48:10.015Z",
+            "credentialId": "68f675dac4fc59f453aa25fb",
+            "name": "Kirsten Hunter's Zoho CRM (10)",
+            "type": "zohoCRM-oauth2",
+            "updatedAt": "2025-10-21T15:46:57.982Z"
+        }
 ```
 
-#### Update Task
-```javascript
-const response = await fetch('/.netlify/functions/zoho-tasks', {
-  method: 'PUT',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    id: '67890',
-    name: 'Updated Task',
-    userId: 'user123',
-    columnValues: { status: 'completed' }
-  })
-});
-```
+Once you've found your credential you can update the code to use that credential.
 
-#### Delete Task
-```javascript
-const response = await fetch('/.netlify/functions/zoho-tasks?taskId=67890&userId=user123', {
-  method: 'DELETE'
-});
-```
-
-## File Structure
+In netlify/functions/zoho-tasks.cjs update the following lines:
 
 ```
-netlify/functions/
-├── helpers/
-│   └── runalloy-helper.cjs  # Core RunAlloy integration with Zoho CRM
-├── zoho-auth.cjs            # Zoho authentication via RunAlloy
-└── zoho-tasks.cjs           # Task operations (CRUD)
-
-src/
-├── App.js                   # Main app with simplified single list UI
-├── BoardComponent.js        # Simplified task display component
-├── TodoList.js              # Task CRUD UI with enhanced display
-└── AppContext.js            # Global state management
+    globalState.set("userId", "<userid from create command>");
+    globalState.set("credentialId", "<credential from list of credentials>");
 ```
 
-## RunAlloy Helper
+### 3. Test locally
 
-The `runalloy-helper.cjs` module provides:
+In your working directory, start the test server.
 
-### Core Function
-```javascript
-executeAction(connectorId, actionId, params)
+```
+netlify dev
 ```
 
-### Zoho CRM Tasks Helpers
-```javascript
-zoho.listTasks(userId)        # List all tasks for user
-zoho.createTask(taskData)     # Create new task with Subject, Status, Priority
-zoho.updateTask(taskId, data) # Update task by ID
-zoho.deleteTask(taskId)       # Delete task by ID
+### 4. Deploy to the web
+
 ```
-
-### Task Schema
-Tasks use Zoho CRM field mappings:
-- `Subject`: Task name/title
-- `Status`: Not Started, In Progress, Completed
-- `Priority`: High, Normal, Low
-- `Description`: Task description
-- `Due_Date`: Due date for task
-- `Owner`: Task assignee
-
-## Application Features
-
-The application provides a simplified task management interface with:
-
-1. ✅ Single task list view (no board selection complexity)
-2. ✅ Enhanced task display with priority badges and due dates
-3. ✅ Task completion toggle with checkbox
-4. ✅ Rich task information including owner and descriptions
-5. ✅ Full CRUD operations (Create, Read, Update, Delete)
-6. ✅ Zoho CRM field mapping and status handling
-7. ✅ Responsive UI with proper loading states and error handling
-
-## Error Handling
-
-RunAlloy errors are standardized:
-
-```javascript
-{
-  statusCode: 400,
-  error: "Error message",
-  details: { /* additional info */ }
-}
+netlify deploy --prod
 ```
-
-## Debugging
-
-Enable detailed logging by checking:
-
-1. **Netlify Function Logs**: See RunAlloy API requests/responses
-2. **Browser Console**: See frontend errors
-3. **RunAlloy Dashboard**: Monitor API usage and errors
-
-## Troubleshooting
-
-### "Authorization token required"
-- Check `RUNALLOY_API_KEY` is set in `.env`
-- Verify API key is valid in RunAlloy dashboard
-
-### "Credential ID required"
-- Ensure Zoho connector is configured in RunAlloy dashboard
-- Verify credential exists and is active
-
-### "Failed to fetch tasks"
-- Check Zoho CRM connector is configured in RunAlloy dashboard
-- Verify credential has necessary permissions for Tasks module
-- Check RunAlloy dashboard for API errors
-- Ensure Zoho CRM has Tasks module enabled
-
-## Best Practices
-
-1. **Error Handling**: Always handle both network and API errors
-2. **Loading States**: Show loading indicators during API calls
-3. **Retry Logic**: Implement retry for transient failures
-4. **Caching**: Consider caching task data for better performance
-5. **Rate Limits**: RunAlloy handles this, but be mindful of excessive calls
-
-## Support
-
-- **RunAlloy Docs**: https://docs.runalloy.com
-- **Zoho CRM API**: https://www.zoho.com/crm/developer/docs/api/
-- **Zoho CRM Tasks Module**: https://www.zoho.com/crm/developer/docs/api/modules-fields-api/tasks.html
-- **Issues**: Check Netlify function logs and RunAlloy dashboard
-
-## License
 

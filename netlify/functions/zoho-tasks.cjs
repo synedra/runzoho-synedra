@@ -27,7 +27,7 @@ exports.handler = async (event, context) => {
 
     switch (event.httpMethod) {
         case 'GET':
-          return await listTasks(userId, globalState.get("userId"), headers);
+          return await listTasks(globalState.get("userId"), globalState.get("credentialId"), headers);
         case 'POST':
           return await createTask(JSON.parse(event.body), userId, headers);
         case 'PUT':

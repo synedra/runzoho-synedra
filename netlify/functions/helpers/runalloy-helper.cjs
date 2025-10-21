@@ -5,54 +5,6 @@ const { glob } = require('fs');
 const RUNALLOY_API_KEY = process.env.RUNALLOY_API_KEY;
 const RUNALLOY_API_URL = process.env.RUNALLOY_API_URL || 'https://production.runalloy.com';
 
-// Cache for user credentials
-let credentialCache = {};
-
-/**
- * Map email address to RunAlloy userId
- */
-/**
- * Get user's credential ID for a specific connector
- * @param {string} userId - The user ID (email)
- * @param {string} connector - The connector name (e.g., 'zohoCRM', 'zohoCRM')
- * @returns {Promise<string>} - The credential ID
- */
-async function getUserCredentialId(userId, connector = 'zohoCRM') {
-  userId = "68f675dac4fc59f453aa25fb";
-  const cacheKey = `${userId}:${connector}`;
-  credentialCache[cacheKey] = "68f675dac4fc59f453aa25fb";
-  // Check cache first
-  if (credentialCache[cacheKey]) {
-    console.log('Using cached credential for', userId, 'connector:', connector);
-    return credentialCache[cacheKey];
-  }
-
-
-  try {
-    const response = await runalloyApiRequest(`/users/${userId}/credentials`, 'GET');
-    const credentials = response.data || response.credentials || response || [];
-    console.log('Credentials array:', JSON.stringify(credentials, null, 2));
-    
-    const credential = Array.isArray(credentials)
-      ? credentials.find(c => c.type === `${connector}-oauth2` || c.app === connector || c.connectorId === connector)
-      : null;
-    
-    console.log('Found credential:', credential);
-    
-    if (credential && (credential._id || credential.credentialId || credential.id)) {
-      const credId = credential._id || credential.credentialId || credential.id;
-      credentialCache[cacheKey] = credId;
-      console.log('Found credential for', userId, 'connector:', connector, 'id:', credId);
-      return credId;
-    }
-    
-    throw new Error(`No ${connector} credential found for user ${userId}`);
-  } catch (error) {
-    console.error('Error getting user credential:', error);
-    throw error;
-  }
-}
-
 /**
  * Execute a RunAlloy action
  * @param {string} connectorId - The connector ID (e.g., 'zohoCRM')
@@ -68,20 +20,16 @@ async function getUserCredentialId(userId, connector = 'zohoCRM') {
 async function executeAction(userId, connectorId, actionId, params = {}) {
   const {
     queryParameters = {},
-    requestBody = {'credentialId': "68f675dac4fc59f453aa25fb"},
+    requestBody = {},
     additionalHeaders = {},
     pathParams = {}
   } = params;
-  globalState.set("credentialId", "68f675dac4fc59f453aa25fb");
  
-  // Map email to RunAlloy userId if needed
-  const runalloyUserId = "68f1e561ba205b5a3bf234c8";
-  userId = runalloyUserId;
+  userId = globalState.get("userId");
+  console.log('Execute action for email/userId:', userId );
 
-  console.log('Execute action for email/userId:', runalloyUserId, '→ RunAlloy userId:', userId);
-  console.log(runalloyUserId)
   // Get the user's credential ID dynamically (or use provided one)
-  const credentialId = "68f675dac4fc59f453aa25fb";
+  const credentialId = globalState.get("credentialId");
   connectorId = connectorId || "zohoCRM"
 
   const payload = {
@@ -96,7 +44,6 @@ async function executeAction(userId, connectorId, actionId, params = {}) {
   
   return new Promise((resolve, reject) => {
     const postData = JSON.stringify(payload);
-    globalState.set("credentialId", "68f675dac4fc59f453aa25fb");
     const options = {
       hostname: url.hostname,
       path: url.pathname,
@@ -107,19 +54,14 @@ async function executeAction(userId, connectorId, actionId, params = {}) {
         'x-api-version': '2025-06',
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(postData),
-        'x-credential-id': "68f675dac4fc59f453aa25fb",
-        'x-alloy-userid': "68f1e561ba205b5a3bf234c8"
-      },
-      body: {
-        providedCredentialId: "68f675dac4fc59f453aa25fb",
-        userId: runalloyUserId,
-        credentialId: "68f675dac4fc59f453aa25fb"
+        'x-credential-id': credentialId,
+        'x-alloy-userid': userId
       }
     };
 
     console.log(options)
 
-    console.log(`RunAlloy: Executing ${connectorId}/${actionId} for user:`, runalloyUserId);
+    console.log(`RunAlloy: Executing ${connectorId}/${actionId} for user:`, userId);
     console.log('RunAlloy: Using credential:', credentialId);
     console.log('RunAlloy: Payload:', JSON.stringify(payload, null, 2));
 
@@ -256,17 +198,17 @@ function runalloyApiRequest(path, method = 'GET', body = null) {
  */
 const zoho = {
  
-  async listTasks(userId, credentialId = "68f675dac4fc59f453aa25fb") {
+  async listTasks(userId, credentialId) {
     const params = {
-      queryParameters: {credentialId : "68f675dac4fc59f453aa25fb"},
-      requestBody: {credentialId : "68f675dac4fc59f453aa25fb"},
+      queryParameters: {},
+      requestBody: {},
       userId,
       credentialId,
       additionalHeaders: {
         'x-api-version': '2025-06',
         'x-api-user-id': userId,
-        'x-credential-id': "68f675dac4fc59f453aa25fb",
-        'x-alloy-userid': "68f1e561ba205b5a3bf234c8"
+        'x-credential-id': globalState.get("credentialId"),
+        'x-alloy-userid': userId
       }
     };
     console.log("EXECUTING ACTION LIST TASKS NOW")
@@ -315,7 +257,7 @@ const zoho = {
   /**
    * Delete a task
    */
-  async deleteTask(taskId, userId, credentialId = "68f675dac4fc59f453aa25fb") {
+  async deleteTask(taskId, userId, credentialId) {
     const params = {
       pathParams: {
         taskId: taskId  // Path parameter as specified in the schema
@@ -331,6 +273,5 @@ const zoho = {
 
 module.exports = {
   executeAction,
-  getUserCredentialId,
   zoho
 };
