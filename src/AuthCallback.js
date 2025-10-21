@@ -26,8 +26,8 @@ function AuthCallback() {
         if (authedUser) localStorage.setItem('slack_authed_user', authedUser);
       }
 
-      if (provider === 'monday') {
-        console.log('Monday auth callback - storing tokens:', { accessToken, refreshToken, expiresIn, tokenType });
+      if (provider === 'zohoCRM') {
+        console.log('zohoCRM auth callback - storing tokens:', { accessToken, refreshToken, expiresIn, tokenType });
       }
 
       // Redirect to main app
