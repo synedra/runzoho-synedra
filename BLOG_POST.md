@@ -6,9 +6,9 @@
 
 ## The Challenge
 
-Building integrations with third-party APIs like Zoho CRM can be complex. You need to handle OAuth flows, manage API credentials, deal with rate limiting, and navigate different API schemas. What if there was a way to simplify all of this while building a clean, modern task management interface?
+Building integrations with third-party APIs like Zoho CRM can be complex. You need to handle OAuth flows, manage API credentials, deal with rate limiting, and navigate different API schemas. What t[...] 
 
-In this tutorial, we'll build a React-based task manager that uses Zoho CRM's Tasks module as the backend, all routed through RunAlloy's connector platform. The result is a simplified, single-list task interface with rich task information display, priority badges, due dates, and full CRUD operations.
+In this tutorial, we'll build a React-based task manager that uses Zoho CRM's Tasks module as the backend, all routed through RunAlloy's connector platform. The result is a simplified, single-list tas[...] 
 
 ## Why This Architecture?
 
@@ -130,51 +130,9 @@ https https://production.runalloy.com/connectors
 
 You should see a list of available connectors, including `zohoCRM`.
 
-## Part 2: Setting Up RunAlloy Users and Credentials
+## Part 2: Deploying the Application (do this before creating credentials)
 
-With HTTPie configured, we can now set up the RunAlloy infrastructure needed for our application.
-
-### Creating a RunAlloy User
-
-Every integration needs a user context. Create one with:
-
-```bash
-https https://production.runalloy.com/users \
-    username="your-email@example.com" \
-    fullName="Your Full Name"
-```
-
-This returns a user ID (like `68f1e561ba205b5a3bf234c8`). Update your HTTPie session file with this user ID in the `x-alloy-userid` header.
-
-If you lose the user ID, you can retrieve it:
-
-```bash
-https https://production.runalloy.com/users
-```
-
-### Creating a Zoho CRM Credential
-
-Now create the credential that will handle Zoho authentication:
-
-```bash
-https https://production.runalloy.com/connectors/zohoCRM/credentials \
-    userId=YOUR_USER_ID \
-    authenticationType=oauth2 \
-    redirectUri=https://YOUR_APP_NAME.netlify.app/.netlify/functions/zoho-auth \
-    data:='{"region":"com"}'
-```
-
-This returns an OAuth URL. Open it in your browser to complete the Zoho authentication flow.
-
-After authentication, list your credentials to get the credential ID:
-
-```bash
-https https://production.runalloy.com/connectors/zohoCRM/credentials
-```
-
-Note the `credentialId` from the response - you'll need this for your application.
-
-## Part 3: Deploying the Application
+Important: Deploy the Netlify app before creating your RunAlloy Zoho credential. The OAuth redirect URI that RunAlloy will ask for needs to point to your deployed site's Netlify Functions endpoint. Deploying first ensures you have a stable redirect URI to use when configuring the Zoho credential.
 
 ### Quick Deploy with Netlify
 
@@ -201,12 +159,14 @@ npm install
 
 ### Configuration
 
-Update the configuration in `netlify/functions/zoho-tasks.cjs`:
+Update the configuration in `netlify/functions/zoho-tasks.cjs` with values you'll obtain later from RunAlloy:
 
 ```javascript
 globalState.set("userId", "YOUR_USER_ID");
 globalState.set("credentialId", "YOUR_CREDENTIAL_ID");
 ```
+
+Note: You'll set the actual `userId` and `credentialId` after creating your RunAlloy user and Zoho credential in the next section. Deploying first ensures you know your site's URL so you can provide an accurate OAuth redirect URI when creating the credential.
 
 ### Environment Variables
 
@@ -221,6 +181,50 @@ RUNALLOY_API_URL=https://production.runalloy.com
 ZOHO_CLIENT_ID=your_zoho_client_id
 ZOHO_CLIENT_SECRET=your_zoho_client_secret
 ```
+
+## Part 3: Setting Up RunAlloy Users and Credentials
+
+With your Netlify app deployed and HTTPie configured, you can now set up the RunAlloy infrastructure needed for your application. Having the deployed Netlify URL at hand is important because you'll use it as the OAuth redirect URI when creating the Zoho credential.
+
+### Creating a RunAlloy User
+
+Every integration needs a user context. Create one with:
+
+```bash
+https https://production.runalloy.com/users \
+    username="your-email@example.com" \
+    fullName="Your Full Name"
+```
+
+This returns a user ID (like `68f1e561ba205b5a3bf234c8`). Update your HTTPie session file with this user ID in the `x-alloy-userid` header.
+
+If you lose the user ID, you can retrieve it:
+
+```bash
+https https://production.runalloy.com/users
+```
+
+### Creating a Zoho CRM Credential
+
+Now create the credential that will handle Zoho authentication. Use the redirect URI for your deployed Netlify app's function (for example: `https://YOUR_APP_NAME.netlify.app/.netlify/functions/zoho-auth`):
+
+```bash
+https https://production.runalloy.com/connectors/zohoCRM/credentials \
+    userId=YOUR_USER_ID \
+    authenticationType=oauth2 \
+    redirectUri=https://YOUR_APP_NAME.netlify.app/.netlify/functions/zoho-auth \
+    data:='{"region":"com"}'
+```
+
+This returns an OAuth URL. Open it in your browser to complete the Zoho authentication flow.
+
+After authentication, list your credentials to get the credential ID:
+
+```bash
+https https://production.runalloy.com/connectors/zohoCRM/credentials
+```
+
+Note the `credentialId` from the response - you'll need this for your application and to update the `netlify/functions/zoho-tasks.cjs` configuration shown earlier.
 
 ## Part 4: Testing and Development
 
@@ -346,7 +350,7 @@ This tutorial demonstrates a simplified but powerful approach to building modern
 
 ## Conclusion
 
-By combining React, Netlify Functions, and RunAlloy, we've created a modern task management application that's both powerful and maintainable. The key insight is using RunAlloy as an integration layer, which abstracts away the complexity of direct API integration while providing better monitoring, error handling, and consistency.
+By combining React, Netlify Functions, and RunAlloy, we've created a modern task management application that's both powerful and maintainable. The key insight is using RunAlloy as an integration layer[...] 
 
 The HTTPie setup provides a professional workflow for API testing and development, making it easy to iterate and debug during development.
 
