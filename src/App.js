@@ -1,23 +1,50 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import './App.css';
-import BoardComponent from './BoardComponent';
-import BoardManagement from './BoardManagement';
+import BoardComponent from './BoardComponent.js';
+import { useAppContext } from './AppContext.js';
 
 function App() {
-  const [boards, setBoards] = useState([]);
-  const [loadingBoards, setLoadingBoards] = useState(false);
-  const [error, setError] = useState(null);
-  const [userEmail, setUserEmail] = useState('');
-  const [emailSubmitted, setEmailSubmitted] = useState(false);
-  const [checkingCredential, setCheckingCredential] = useState(false);
-  const [needsAuth, setNeedsAuth] = useState(false);
+  const {
+    setTasks,
+    loadingBoards,
+    setLoadingBoards,
+    error,
+    setError,
+    userEmail,
+    setUserEmail,
+    setUserId,
+    checkingCredential,
+    setCheckingCredential,
+    credentialId,
+    setCredentialId,
+    needsAuth,
+    setNeedsAuth,
+    emailSubmitted,
+    setEmailSubmitted,
+  } = useAppContext();
 
   useEffect(() => {
-    const storedEmail = localStorage.getItem('user_email');
+    const storedEmail = userEmail ? userEmail : "synedra@gmail.com";
+    const storedUserId = localStorage.getItem('user_id');
+    const urlParams = new URLSearchParams(window.location.search);
+    const authSuccess = urlParams.get('auth') === 'success';
+
     if (storedEmail) {
       setUserEmail(storedEmail);
+      setUserId(storedUserId || '');
       setEmailSubmitted(true);
-      checkCredentialsAndAuth(storedEmail);
+
+      // If we just came back from auth success, skip the credential check
+      if (!authSuccess) {
+        console.log('Checking credentials for stored email:', storedEmail);
+        checkCredentialsAndAuth(storedEmail);
+      } else {
+        // Clear the auth param from URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+        // User is authenticated, fetch tasks directly
+        console.log('Auth success, fetching tasks for:', storedEmail);
+        fetchTasks(storedEmail);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -29,79 +56,44 @@ function App() {
       return;
     }
     
-    localStorage.setItem('user_email', userEmail);
+    setUserEmail (userEmail);
     setEmailSubmitted(true);
     setError(null);
     await checkCredentialsAndAuth(userEmail);
   };
 
+
   const checkCredentialsAndAuth = async (email) => {
     setCheckingCredential(true);
     setError(null);
-    
-    try {
-      const response = await fetch(`/.netlify/functions/runalloy-auth?action=check-status&userId=${encodeURIComponent(email)}`);
-      const data = await response.json();
-      
-      console.log('Credential status:', data);
-      
-      if (data.hasCredential) {
-        setNeedsAuth(false);
-        await fetchBoards(email);
-      } else {
-        console.log('No credential, creating OAuth URL...');
-        const linkResponse = await fetch(`/.netlify/functions/runalloy-auth?action=create-link&userId=${encodeURIComponent(email)}`);
-        
-        if (!linkResponse.ok) {
-          const errorText = await linkResponse.text();
-          console.error('Link creation failed:', errorText);
-          throw new Error('Failed to create authentication link');
-        }
-        
-        const linkData = await linkResponse.json();
-        console.log('Link response:', linkData);
-        
-        if (!linkData.linkUrl) {
-          console.error('No linkUrl in response:', linkData);
-          throw new Error('Invalid response from authentication service');
-        }
-        
-        console.log('Redirecting to OAuth URL:', linkData.linkUrl);
-        setNeedsAuth(true);
-        window.location.href = linkData.linkUrl;
-      }
-    } catch (err) {
-      console.error('Error:', err);
-      setError('Failed to authenticate: ' + err.message);
-      setCheckingCredential(false);
+
+    console.log('Checking credentials for:', email);
+      setUserEmail(email)
+      setCredentialId("68f675dac4fc59f453aa25fb");
+
       setNeedsAuth(false);
-    }
+      await fetchTasks(email);
   };
 
-  const fetchBoards = async (email) => {
+  const fetchTasks = async (email) => {
     setLoadingBoards(true);
     setError(null);
+    
     try {
-      const response = await fetch(`/.netlify/functions/monday-boards?userId=${encodeURIComponent(email)}`, {
-        method: 'GET',
-      });
+      const response = await fetch(`/.netlify/functions/zoho-tasks?userId=68f1e561ba205b5a3bf234c8`)
+      console.log("Response: " + response)
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch boards');
+        throw new Error(errorData.error || 'Failed to fetch tasks');
       }
 
       const data = await response.json();
-      const transformedBoards = (data.data || []).map(board => ({
-        id: board.id,
-        name: board.name,
-        updated_at: board.updated_at,
-        items: board.items_page?.items || []
-      }));
-      setBoards(transformedBoards);
+      console.log('Tasks data:', data);
+      setTasks(data.data || []);
       setCheckingCredential(false);
     } catch (error) {
-      console.error('Error fetching boards:', error);
+      console.error('Error fetching tasks:', error);
       setError(error.message);
       setCheckingCredential(false);
     } finally {
@@ -109,22 +101,36 @@ function App() {
     }
   };
 
-  const handleBoardChange = () => {
-    fetchBoards(userEmail);
-  };
+
 
   const handleLogout = () => {
-    localStorage.removeItem('user_email');
     setUserEmail('');
+    setUserId('');
     setEmailSubmitted(false);
-    setBoards([]);
     setError(null);
   };
 
   return (
     <div className="App">
+      {emailSubmitted && !checkingCredential && !needsAuth && (
+        <div style={{ marginBottom: '20px', textAlign: 'right', maxWidth: '1200px', width: '100%', padding: '10px 20px' }}>
+          <span style={{ marginRight: '15px', color: '#666' }}>{userEmail}</span>
+          <button onClick={handleLogout} style={{
+            padding: '8px 16px',
+            backgroundColor: '#6c757d',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}>
+            Logout
+          </button>
+        </div>
+      )}
+      
       <header className="App-header">
-        <h1>Monday.com Todo List (via RunAlloy)</h1>
+        <h1>Zoho Tasks Todo List (via RunAlloy)</h1>
 
         {!emailSubmitted && (
           <div style={{
@@ -190,7 +196,7 @@ function App() {
         )}
 
         {checkingCredential && <div style={{ padding: '20px' }}><p>Setting up your account...</p></div>}
-        {needsAuth && <div style={{ padding: '20px' }}><p>Redirecting to Monday.com...</p></div>}
+        {needsAuth && <div style={{ padding: '20px' }}><p>Redirecting to Zoho...</p></div>}
 
         {error && (
           <div style={{
@@ -208,32 +214,12 @@ function App() {
 
         {emailSubmitted && !checkingCredential && !needsAuth && (
           <>
-            <div style={{ marginBottom: '20px', textAlign: 'right', maxWidth: '1200px', width: '100%' }}>
-              <span style={{ marginRight: '15px', color: '#666' }}>{userEmail}</span>
-              <button onClick={handleLogout} style={{
-                padding: '8px 16px',
-                backgroundColor: '#6c757d',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '14px'
-              }}>
-                Logout
-              </button>
-            </div>
-
-            {loadingBoards && <p>Loading boards...</p>}
+            {loadingBoards && <p>Loading tasks...</p>}
             
             {!loadingBoards && !error && (
-              <>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', justifyContent: 'center' }}>
-                  <BoardComponent boards={boards} defaultBoardIndex={0} />
-                  <BoardComponent boards={boards} defaultBoardIndex={1} />
-                </div>
-
-                <BoardManagement boards={boards} onBoardChange={handleBoardChange} />
-              </>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', justifyContent: 'center' }}>
+                <BoardComponent />
+              </div>
             )}
           </>
         )}

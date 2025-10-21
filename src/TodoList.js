@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 
-function TodoList({ boardId, boardName }) {
+function TodoList() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -13,12 +13,12 @@ function TodoList({ boardId, boardName }) {
       setLoading(true);
       setError(null);
 
-      const userEmail = localStorage.getItem('user_email');
-      console.log('Fetching items for boardId:', boardId, 'user:', userEmail);
-      const itemsResponse = await fetch(`/.netlify/functions/monday-items?boardId=${boardId}&userId=${encodeURIComponent(userEmail)}`, {
+      const userEmail = localStorage.getItem('user_email') || 'synedra@gmail.com';
+      console.log('Fetching tasks for user:', userEmail);
+      const itemsResponse = await fetch(`/.netlify/functions/zoho-tasks?userId=${encodeURIComponent(userEmail)}`, {
         method: 'GET',
       });
-      console.log('Fetch URL:', `/.netlify/functions/monday-items?boardId=${boardId}`);
+      console.log('Fetch URL:', `/.netlify/functions/zoho-tasks?userId=${encodeURIComponent(userEmail)}`);
 
       console.log('Items response status:', itemsResponse.status);
       console.log('Items response headers:', Object.fromEntries(itemsResponse.headers.entries()));
@@ -33,12 +33,18 @@ function TodoList({ boardId, boardName }) {
       console.log('Items data:', itemsData);
 
       const boardItems = itemsData.data || [];
-      console.log('Found items for board', boardId, ':', boardItems);
+      console.log('Found tasks:', boardItems);
 
       // Transform items to match expected format with column_values
       const transformedItems = boardItems.map(item => ({
         id: item.id,
         name: item.name,
+        description: item.description || '',
+        dueDate: item.dueDate,
+        priority: item.priority,
+        status: item.status,
+        owner: item.owner,
+        modifiedTime: item.modifiedTime,
         column_values: item.column_values || []
       }));
 
@@ -50,23 +56,18 @@ function TodoList({ boardId, boardName }) {
     } finally {
       setLoading(false);
     }
-  }, [boardId]);
+  }, []);
 
   useEffect(() => {
-    if (boardId) {
-      fetchItems();
-    } else {
-      setItems([]);
-      setLoading(false);
-    }
-  }, [boardId, fetchItems]);
+    fetchItems();
+  }, [fetchItems]);
 
   const createItem = async () => {
     if (!newItemName.trim()) return;
 
     try {
-      const userEmail = localStorage.getItem('user_email');
-      const response = await fetch(`/.netlify/functions/monday-items?boardId=${boardId}&userId=${encodeURIComponent(userEmail)}`, {
+      const userEmail = localStorage.getItem('user_email') || 'synedra@gmail.com';
+      const response = await fetch(`/.netlify/functions/zoho-tasks?userId=${encodeURIComponent(userEmail)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -87,8 +88,8 @@ function TodoList({ boardId, boardName }) {
 
   const updateItem = async (id, name) => {
     try {
-      const userEmail = localStorage.getItem('user_email');
-      const response = await fetch(`/.netlify/functions/monday-items?userId=${encodeURIComponent(userEmail)}`, {
+      const userEmail = localStorage.getItem('user_email') || 'synedra@gmail.com';
+      const response = await fetch(`/.netlify/functions/zoho-tasks?userId=${encodeURIComponent(userEmail)}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -96,8 +97,12 @@ function TodoList({ boardId, boardName }) {
         body: JSON.stringify({ id, name }),
       });
 
+      console.log('Update response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Failed to update item');
+        const errorText = await response.text();
+        console.log('Update response error:', errorText);
+        throw new Error(`Failed to update item: ${errorText}`);
       }
 
       setEditingItem(null);
@@ -111,8 +116,8 @@ function TodoList({ boardId, boardName }) {
   const deleteItem = async (id) => {
     console.log('Deleting item:', id);
     try {
-      const userEmail = localStorage.getItem('user_email');
-      const response = await fetch(`/.netlify/functions/monday-items?itemId=${id}&userId=${encodeURIComponent(userEmail)}`, {
+      const userEmail = localStorage.getItem('user_email') || 'synedra@gmail.com';
+      const response = await fetch(`/.netlify/functions/zoho-tasks?taskId=${id}&userId=${encodeURIComponent(userEmail)}`, {
         method: 'DELETE',
       });
 
@@ -121,7 +126,7 @@ function TodoList({ boardId, boardName }) {
       if (!response.ok) {
         const errorText = await response.text();
         console.log('Delete response error:', errorText);
-        throw new Error('Failed to delete item');
+        throw new Error(`Failed to delete item: ${response.status} - ${errorText}`);
       }
 
       console.log('Item deleted successfully, refreshing items...');
@@ -152,22 +157,27 @@ function TodoList({ boardId, boardName }) {
 
     console.log('Status column ID:', statusColumn.id);
     console.log('Current status:', currentStatus, 'New status:', newStatus);
+    console.log('Task status from item:', item.status);
 
     try {
-      const userEmail = localStorage.getItem('user_email');
-      const columnValues = {};
-      columnValues[statusColumn.id] = newStatus;
+      const userEmail = localStorage.getItem('user_email') || 'synedra@gmail.com';
+      const columnValues = [
+        {
+          id: statusColumn.id,
+          text: newStatus,
+          type: 'status'
+        }
+      ];
       
       console.log('Sending column values:', columnValues);
       
-      const response = await fetch(`/.netlify/functions/monday-items?userId=${encodeURIComponent(userEmail)}`, {
+      const response = await fetch(`/.netlify/functions/zoho-tasks?userId=${encodeURIComponent(userEmail)}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           id: item.id,
-          boardId: boardId,
           columnValues: columnValues
         }),
       });
@@ -177,7 +187,7 @@ function TodoList({ boardId, boardName }) {
       if (!response.ok) {
         const errorText = await response.text();
         console.log('Toggle response error:', errorText);
-        throw new Error('Failed to update item status');
+        throw new Error(`Failed to update item status: ${errorText}`);
       }
 
       console.log('Status updated successfully, refreshing items...');
@@ -206,7 +216,7 @@ function TodoList({ boardId, boardName }) {
 
   return (
     <div style={{ maxWidth: '600px', margin: '20px auto', padding: '20px', border: '1px solid #ccc', borderRadius: '8px' }}>
-      <h2>{boardName || 'Todo List'}</h2>
+      <h2>My Tasks</h2>
 
       {loading && <p>Loading items...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
@@ -225,7 +235,7 @@ function TodoList({ boardId, boardName }) {
 
       <ul style={{ listStyle: 'none', padding: 0 }}>
         {items.map(item => (
-          <li key={item.id} style={{ marginBottom: '10px', padding: '10px', border: '1px solid #eee', borderRadius: '4px' }}>
+          <li key={item.id} style={{ marginBottom: '15px', padding: '15px', border: '1px solid #eee', borderRadius: '8px', backgroundColor: '#fafafa' }}>
             {editingItem === item.id ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <input
@@ -238,24 +248,58 @@ function TodoList({ boardId, boardName }) {
                 <button onClick={cancelEditing} style={{ padding: '5px 10px' }}>Cancel</button>
               </div>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={item.column_values.some(col => col.text === 'Done')}
-                    onChange={() => toggleDone(item)}
-                    style={{ marginRight: '10px' }}
-                  />
-                  <span style={{
-                    textDecoration: item.column_values.some(col => col.text === 'Done') ? 'line-through' : 'none',
-                    color: item.column_values.some(col => col.text === 'Done') ? '#666' : '#000'
-                  }}>
-                    {item.name}
-                  </span>
-                </div>
-                <div>
-                  <button onClick={() => startEditing(item)} style={{ padding: '5px 10px', marginRight: '5px' }}>Edit</button>
-                  <button onClick={() => deleteItem(item.id)} style={{ padding: '5px 10px', backgroundColor: '#ff4444', color: 'white' }}>Delete</button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                    <input
+                      type="checkbox"
+                      checked={item.column_values.some(col => col.text === 'Done') || item.status === 'Completed'}
+                      onChange={() => toggleDone(item)}
+                      style={{ marginRight: '10px' }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div style={{
+                        fontWeight: 'bold',
+                        fontSize: '16px',
+                        textDecoration: (item.column_values.some(col => col.text === 'Done') || item.status === 'Completed') ? 'line-through' : 'none',
+                        color: (item.column_values.some(col => col.text === 'Done') || item.status === 'Completed') ? '#666' : '#000',
+                        marginBottom: '4px'
+                      }}>
+                        {item.name}
+                      </div>
+                      {item.description && (
+                        <div style={{ fontSize: '14px', color: '#666', marginBottom: '4px' }}>
+                          {item.description}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: '15px', fontSize: '12px', color: '#888' }}>
+                        {item.priority && (
+                          <span style={{ 
+                            backgroundColor: item.priority === 'High' ? '#ffebee' : item.priority === 'Normal' ? '#f3e5f5' : '#e8f5e8',
+                            color: item.priority === 'High' ? '#d32f2f' : item.priority === 'Normal' ? '#7b1fa2' : '#388e3c',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '11px'
+                          }}>
+                            {item.priority}
+                          </span>
+                        )}
+                        {item.dueDate && (
+                          <span>Due: {new Date(item.dueDate).toLocaleDateString()}</span>
+                        )}
+                        {item.owner && (
+                          <span>Owner: {item.owner}</span>
+                        )}
+                        {item.status && (
+                          <span>Status: {item.status}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '5px' }}>
+                    <button onClick={() => startEditing(item)} style={{ padding: '5px 10px', fontSize: '12px' }}>Edit</button>
+                    <button onClick={() => deleteItem(item.id)} style={{ padding: '5px 10px', backgroundColor: '#ff4444', color: 'white', fontSize: '12px' }}>Delete</button>
+                  </div>
                 </div>
               </div>
             )}

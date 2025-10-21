@@ -1,4 +1,6 @@
 const https = require('https');
+const globalState = require('../../../src/global-state.cjs');
+const { glob } = require('fs');
 
 const RUNALLOY_API_KEY = process.env.RUNALLOY_API_KEY;
 const RUNALLOY_API_URL = process.env.RUNALLOY_API_URL || 'https://production.runalloy.com';
@@ -9,48 +11,42 @@ let credentialCache = {};
 /**
  * Map email address to RunAlloy userId
  */
-function getUserIdFromEmail(email) {
-  if (!email) return null;
-  
-  // Use base64 encoding to avoid special characters in env var names
-  const base64Email = Buffer.from(email).toString('base64');
-  const envVarName = `RUNALLOY_USER_${base64Email}`;
-  
-  const userId = process.env[envVarName];
-  console.log(`Mapping email ${email} via ${envVarName}:`, userId ? userId : 'not found');
-  
-  return userId;
-}
-
 /**
- * Get user's credential ID for Monday.com
+ * Get user's credential ID for a specific connector
  * @param {string} userId - The user ID (email)
+ * @param {string} connector - The connector name (e.g., 'zohoCRM', 'zohoCRM')
  * @returns {Promise<string>} - The credential ID
  */
-async function getUserCredentialId(userId) {
-  const cacheKey = `${userId}:monday`;
-  
+async function getUserCredentialId(userId, connector = 'zohoCRM') {
+  userId = "68f675dac4fc59f453aa25fb";
+  const cacheKey = `${userId}:${connector}`;
+  credentialCache[cacheKey] = "68f675dac4fc59f453aa25fb";
   // Check cache first
   if (credentialCache[cacheKey]) {
-    console.log('Using cached credential for', userId);
+    console.log('Using cached credential for', userId, 'connector:', connector);
     return credentialCache[cacheKey];
   }
 
+
   try {
     const response = await runalloyApiRequest(`/users/${userId}/credentials`, 'GET');
-    const credentials = response.credentials || response || [];
-    const mondayCredential = Array.isArray(credentials)
-      ? credentials.find(c => c.app === 'monday' || c.connectorId === 'monday')
+    const credentials = response.data || response.credentials || response || [];
+    console.log('Credentials array:', JSON.stringify(credentials, null, 2));
+    
+    const credential = Array.isArray(credentials)
+      ? credentials.find(c => c.type === `${connector}-oauth2` || c.app === connector || c.connectorId === connector)
       : null;
     
-    if (mondayCredential && (mondayCredential._id || mondayCredential.credentialId || mondayCredential.id)) {
-      const credId = mondayCredential._id || mondayCredential.credentialId || mondayCredential.id;
+    console.log('Found credential:', credential);
+    
+    if (credential && (credential._id || credential.credentialId || credential.id)) {
+      const credId = credential._id || credential.credentialId || credential.id;
       credentialCache[cacheKey] = credId;
-      console.log('Found credential for', userId, ':', credId);
+      console.log('Found credential for', userId, 'connector:', connector, 'id:', credId);
       return credId;
     }
     
-    throw new Error(`No Monday.com credential found for user ${userId}`);
+    throw new Error(`No ${connector} credential found for user ${userId}`);
   } catch (error) {
     console.error('Error getting user credential:', error);
     throw error;
@@ -59,7 +55,7 @@ async function getUserCredentialId(userId) {
 
 /**
  * Execute a RunAlloy action
- * @param {string} connectorId - The connector ID (e.g., 'monday')
+ * @param {string} connectorId - The connector ID (e.g., 'zohoCRM')
  * @param {string} actionId - The action ID (e.g., 'listBoards')
  * @param {object} params - Action parameters
  * @param {object} params.queryParameters - Query parameters for the action
@@ -69,21 +65,24 @@ async function getUserCredentialId(userId) {
  * @param {string} params.userId - Optional user ID (defaults to RUNALLOY_USER_ID)
  * @returns {Promise<object>} - The response data
  */
-async function executeAction(connectorId, actionId, params = {}) {
+async function executeAction(userId, connectorId, actionId, params = {}) {
   const {
     queryParameters = {},
-    requestBody = {},
+    requestBody = {'credentialId': "68f675dac4fc59f453aa25fb"},
     additionalHeaders = {},
-    pathParams = {},
-    userId: emailOrUserId
+    pathParams = {}
   } = params;
-
+  globalState.set("credentialId", "68f675dac4fc59f453aa25fb");
+ 
   // Map email to RunAlloy userId if needed
-  const runalloyUserId = getUserIdFromEmail(emailOrUserId) || emailOrUserId;
-  console.log('Execute action for email/userId:', emailOrUserId, '→ RunAlloy userId:', runalloyUserId);
+  const runalloyUserId = "68f1e561ba205b5a3bf234c8";
+  userId = runalloyUserId;
 
-  // Get the user's credential ID dynamically
-  const credentialId = await getUserCredentialId(runalloyUserId);
+  console.log('Execute action for email/userId:', runalloyUserId, '→ RunAlloy userId:', userId);
+  console.log(runalloyUserId)
+  // Get the user's credential ID dynamically (or use provided one)
+  const credentialId = "68f675dac4fc59f453aa25fb";
+  connectorId = connectorId || "zohoCRM"
 
   const payload = {
     credentialId,
@@ -97,7 +96,7 @@ async function executeAction(connectorId, actionId, params = {}) {
   
   return new Promise((resolve, reject) => {
     const postData = JSON.stringify(payload);
-
+    globalState.set("credentialId", "68f675dac4fc59f453aa25fb");
     const options = {
       hostname: url.hostname,
       path: url.pathname,
@@ -107,9 +106,18 @@ async function executeAction(connectorId, actionId, params = {}) {
         'API-KEY': RUNALLOY_API_KEY,
         'x-api-version': '2025-06',
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData)
+        'Content-Length': Buffer.byteLength(postData),
+        'x-credential-id': "68f675dac4fc59f453aa25fb",
+        'x-alloy-userid': "68f1e561ba205b5a3bf234c8"
+      },
+      body: {
+        providedCredentialId: "68f675dac4fc59f453aa25fb",
+        userId: runalloyUserId,
+        credentialId: "68f675dac4fc59f453aa25fb"
       }
     };
+
+    console.log(options)
 
     console.log(`RunAlloy: Executing ${connectorId}/${actionId} for user:`, runalloyUserId);
     console.log('RunAlloy: Using credential:', credentialId);
@@ -157,6 +165,17 @@ async function executeAction(connectorId, actionId, params = {}) {
       });
     });
 
+    req.on('timeout', () => {
+      console.error('RunAlloy: Request timeout');
+      req.destroy();
+      reject({
+        statusCode: 408,
+        error: 'Request timeout to RunAlloy API',
+        details: 'Request took longer than 30 seconds'
+      });
+    });
+
+    req.setTimeout(30000); // 30 second timeout
     req.write(postData);
     req.end();
   });
@@ -231,113 +250,87 @@ function runalloyApiRequest(path, method = 'GET', body = null) {
   });
 }
 
+
 /**
- * Monday.com specific helper functions
+ * Zoho Tasks specific helper functions
  */
-const monday = {
-  /**
-   * List all boards
-   */
-  async listBoards(userId) {
-    return executeAction('monday', 'listBoards', {
-      queryParameters: {},
-      requestBody: {},
-      userId
-    });
+const zoho = {
+ 
+  async listTasks(userId, credentialId = "68f675dac4fc59f453aa25fb") {
+    const params = {
+      queryParameters: {credentialId : "68f675dac4fc59f453aa25fb"},
+      requestBody: {credentialId : "68f675dac4fc59f453aa25fb"},
+      userId,
+      credentialId,
+      additionalHeaders: {
+        'x-api-version': '2025-06',
+        'x-api-user-id': userId,
+        'x-credential-id': "68f675dac4fc59f453aa25fb",
+        'x-alloy-userid': "68f1e561ba205b5a3bf234c8"
+      }
+    };
+    console.log("EXECUTING ACTION LIST TASKS NOW")
+    return executeAction(userId, 'zohoCRM', 'listTasks', params);
   },
 
   /**
-   * Create a new board
+   * Create a task
    */
-  async createBoard(name, userId) {
-    return executeAction('monday', 'createBoard', {
+  async createTask(taskListId, taskName, userId, credentialId = null) {
+    const params = {
       requestBody: {
-        board_name: name,
-        board_kind: 'public'
+        data: [
+          {
+            Subject: taskName,  // Required field
+            Status: 'Not Started',  // Default status from enum
+            Priority: 'Normal'  // Default priority from enum
+          }
+        ]
       },
       userId
-    });
+    };
+    if (credentialId) params.credentialId = credentialId;
+    return executeAction(userId, 'zohoCRM', 'createTask', params);
   },
 
   /**
-   * Update a board
+   * Update a task
    */
-  async updateBoard(boardId, name, userId) {
-    return executeAction('monday', 'updateBoard', {
+  async updateTask(taskId, updates, userId, credentialId = null) {
+    const params = {
+      pathParams: {
+        taskId: taskId  // Path parameter as required by schema
+      },
       requestBody: {
-        board_id: boardId,
-        board_attribute: 'name',
-        new_value: name
+        data: [
+          updates  // The updates object goes directly in the data array
+        ]
       },
       userId
-    });
+    };
+    if (credentialId) params.credentialId = credentialId;
+    return executeAction(userId, 'zohoCRM', 'updateTask', params);
   },
 
   /**
-   * Delete a board
+   * Delete a task
    */
-  async deleteBoard(boardId, userId) {
-    return executeAction('monday', 'deleteBoard', {
-      requestBody: {
-        board_id: boardId
+  async deleteTask(taskId, userId, credentialId = "68f675dac4fc59f453aa25fb") {
+    const params = {
+      pathParams: {
+        taskId: taskId  // Path parameter as specified in the schema
       },
-      userId
-    });
-  },
-
-  /**
-   * List items in a board
-   */
-  async listItems(boardId, userId) {
-    return executeAction('monday', 'listItems', {
-      queryParameters: {
-        board_id: boardId
-      },
-      userId
-    });
-  },
-
-  /**
-   * Create an item
-   */
-  async createItem(boardId, itemName, userId) {
-    return executeAction('monday', 'createItem', {
-      requestBody: {
-        board_id: boardId,
-        item_name: itemName
-      },
-      userId
-    });
-  },
-
-  /**
-   * Update an item
-   */
-  async updateItem(itemId, updates, userId) {
-    return executeAction('monday', 'updateItem', {
-      requestBody: {
-        item_id: itemId,
-        ...updates
-      },
-      userId
-    });
-  },
-
-  /**
-   * Delete an item
-   */
-  async deleteItem(itemId, userId) {
-    return executeAction('monday', 'deleteItem', {
-      requestBody: {
-        item_id: itemId
-      },
-      userId
-    });
+      requestBody: {},  // No request body needed for delete
+      userId,
+      credentialId
+    };
+    
+    return executeAction(userId, 'zohoCRM', 'deleteTask', params);
   }
 };
 
 module.exports = {
   executeAction,
   getUserCredentialId,
-  monday
+  zoho
 };
